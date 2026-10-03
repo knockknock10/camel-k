@@ -878,7 +878,6 @@ func TestServiceNetworkPolicyRequiresSelector(t *testing.T) {
 
 func findNetworkPolicy(resources *kubernetes.Collection) *networkingv1.NetworkPolicy {
 	var result *networkingv1.NetworkPolicy
-	resources.Visit(func(resource interface{ GetName() string }) {})
 	resources.Visit(func(resource runtime.Object) {
 		if networkPolicy, ok := resource.(*networkingv1.NetworkPolicy); ok {
 			result = networkPolicy
