@@ -176,11 +176,7 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 		}
 	}
 
-	return &networkingv1.NetworkPolicy{
-		metav1.TypeMeta{
-			Kind:       "NetworkPolicy",
-			APIVersion: networkingv1.SchemeGroupVersion.String(),
-		},
+	policy := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      itName,
 			Namespace: itNamespace,
@@ -201,8 +197,12 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 				{From: []networkingv1.NetworkPolicyPeer{from}},
 			},
 		},
-	}, nil
-}
+	}
+	policy.TypeMeta = metav1.TypeMeta{
+		Kind:       "NetworkPolicy",
+		APIVersion: networkingv1.SchemeGroupVersion.String(),
+	}
+	return policy, nil
 
 func (t *serviceTrait) getServiceFor(itName, itNamespace string) *corev1.Service {
 	labels := map[string]string{
