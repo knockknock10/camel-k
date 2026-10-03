@@ -93,8 +93,6 @@ jobs:
         run: |
           go test -p 1 -timeout 30m -v \
             ./e2e/common/traits \
-            -run '^TestServiceNetworkPolicy            -tags=integration \
-            -count=1
- \
+            -run '^TestServiceNetworkPolicy$' \
             -tags=integration \
             -count=1
