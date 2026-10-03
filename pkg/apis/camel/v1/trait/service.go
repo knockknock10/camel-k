@@ -49,6 +49,15 @@ type ServiceTrait struct {
 	// Don't use this for the primary http managed port (which is managed by container trait).
 	// Don't use in Knative based environments.
 	Ports []string `json:"ports,omitempty" property:"ports"`
+
+	// Enable creation of a NetworkPolicy for the Service (default `false`).
+	NetworkPolicyEnabled *bool `json:"networkPolicyEnabled,omitempty" property:"network-policy-enabled"`
+	// Namespace label selectors used as allowed NetworkPolicy ingress sources.
+	// When pod selectors are also provided, selectors at the same index are combined.
+	NetworkPolicyNamespaceSelector []map[string]string `json:"networkPolicyNamespaceSelector,omitempty" property:"network-policy-namespace-selector"`
+	// Pod label selectors used as allowed NetworkPolicy ingress sources.
+	// When namespace selectors are also provided, selectors at the same index are combined.
+	NetworkPolicyPodSelector []map[string]string `json:"networkPolicyPodSelector,omitempty" property:"network-policy-pod-selector"`
 }
 
 type ServiceType string

@@ -2410,6 +2410,23 @@ spec:
                           type: string
                         description: The labels added to the Service object.
                         type: object
+                      networkPolicyEnabled:
+                        description: Enable creation of a NetworkPolicy for the Service (default `false`).
+                        type: boolean
+                      networkPolicyNamespaceSelector:
+                        description: Namespace label selectors used as allowed NetworkPolicy ingress sources. When pod selectors are also provided, selectors at the same index are combined.
+                        items:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        type: array
+                      networkPolicyPodSelector:
+                        description: Pod label selectors used as allowed NetworkPolicy ingress sources. When namespace selectors are also provided, selectors at the same index are combined.
+                        items:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        type: array
                       nodePort:
                         description: |-
                           Enable Service to be exposed as NodePort (default `false`).

@@ -25,6 +25,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
@@ -41,6 +43,90 @@ const (
 	ServiceTestNamespace = "ns"
 	ServiceTestName      = "test"
 )
+
+func TestServiceWithNetworkPolicy(t *testing.T) {
+	env := createTestServiceEnvironment(t)
+	namespaceSelector := map[string]string{"kubernetes.io/metadata.name": "backend"}
+	podSelector := map[string]string{"app": "my-client"}
+	env.Integration.Spec.Traits.Service.NetworkPolicyEnabled = ptr.To(true)
+	env.Integration.Spec.Traits.Service.NetworkPolicyNamespaceSelector = []map[string]string{namespaceSelector}
+	env.Integration.Spec.Traits.Service.NetworkPolicyPodSelector = []map[string]string{podSelector}
+	_, _, err := NewCatalog(nil).apply(env)
+	require.NoError(t, err)
+	var policy *networkingv1.NetworkPolicy
+	env.Resources.Visit(func(resource k8sruntime.Object) {
+		if candidate, ok := resource.(*networkingv1.NetworkPolicy); ok && candidate.Name == ServiceTestName {
+			policy = candidate
+		}
+	})
+	require.NotNil(t, policy)
+	assert.Equal(t, map[string]string{v1.IntegrationLabel: ServiceTestName}, policy.Spec.PodSelector.MatchLabels)
+	assert.Equal(t, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}, policy.Spec.PolicyTypes)
+	require.Len(t, policy.Spec.Ingress, 1)
+	require.Len(t, policy.Spec.Ingress[0].From, 1)
+	assert.Equal(t, namespaceSelector, policy.Spec.Ingress[0].From[0].NamespaceSelector.MatchLabels)
+	assert.Equal(t, podSelector, policy.Spec.Ingress[0].From[0].PodSelector.MatchLabels)
+}
+
+func TestServiceWithNetworkPolicyDisabledByDefault(t *testing.T) {
+	env := createTestServiceEnvironment(t)
+	_, _, err := NewCatalog(nil).apply(env)
+	require.NoError(t, err)
+	var found bool
+	env.Resources.Visit(func(resource k8sruntime.Object) {
+		if _, ok := resource.(*networkingv1.NetworkPolicy); ok {
+			found = true
+		}
+	})
+	assert.False(t, found)
+}
+
+func TestServiceWithNetworkPolicyRequiresSelector(t *testing.T) {
+	env := createTestServiceEnvironment(t)
+	env.Integration.Spec.Traits.Service.NetworkPolicyEnabled = ptr.To(true)
+	_, _, err := NewCatalog(nil).apply(env)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "network policy requires at least one namespace or pod selector")
+}
+
+func TestServiceWithNetworkPolicyRejectsMismatchedSelectors(t *testing.T) {
+	env := createTestServiceEnvironment(t)
+	env.Integration.Spec.Traits.Service.NetworkPolicyEnabled = ptr.To(true)
+	env.Integration.Spec.Traits.Service.NetworkPolicyNamespaceSelector = []map[string]string{{"team": "backend"}}
+	env.Integration.Spec.Traits.Service.NetworkPolicyPodSelector = []map[string]string{{"app": "client"}, {"app": "worker"}}
+	_, _, err := NewCatalog(nil).apply(env)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "counts must match")
+}
+
+func TestServiceWithNetworkPolicyRejectsEmptySelector(t *testing.T) {
+	env := createTestServiceEnvironment(t)
+	env.Integration.Spec.Traits.Service.NetworkPolicyEnabled = ptr.To(true)
+	env.Integration.Spec.Traits.Service.NetworkPolicyNamespaceSelector = []map[string]string{{}}
+	_, _, err := NewCatalog(nil).apply(env)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "namespace selectors cannot be empty")
+}
+
+func createTestServiceEnvironment(t *testing.T) *Environment {
+	t.Helper()
+	client, _ := internal.NewFakeClient()
+	catalog, err := camel.DefaultCatalog()
+	require.NoError(t, err)
+	return &Environment{
+		CamelCatalog: catalog, Catalog: NewCatalog(nil), Client: client,
+		Integration: &v1.Integration{
+			ObjectMeta: metav1.ObjectMeta{Name: ServiceTestName, Namespace: ServiceTestNamespace},
+			Status: v1.IntegrationStatus{Phase: v1.IntegrationPhaseDeploying},
+			Spec: v1.IntegrationSpec{Traits: v1.Traits{
+				Service: &traitv1.ServiceTrait{Trait: traitv1.Trait{Enabled: ptr.To(true)}, Auto: ptr.To(false)},
+			}},
+		},
+		IntegrationKit: &v1.IntegrationKit{Status: v1.IntegrationKitStatus{Phase: v1.IntegrationKitPhaseReady}},
+		Platform: pl, EnvVars: make([]corev1.EnvVar, 0), ExecutedTraits: make([]Trait, 0),
+		Resources: kubernetes.NewCollection(),
+	}
+}
 
 func TestServiceWithDefaults(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()

@@ -62,6 +62,18 @@ When omitted, `port-protocol` (admitted values `TCP`, `UDP` or `SCTP`) is `TCP`.
 Don't use this for the primary http managed port (which is managed by container trait).
 Don't use in Knative based environments.
 
+| service.network-policy-enabled
+| bool
+| Enable creation of a NetworkPolicy for the Service (default `false`).
+
+| service.network-policy-namespace-selector
+| []map[string]string
+| Namespace label selectors used as allowed NetworkPolicy ingress sources. When pod selectors are also provided, selectors at the same index are combined.
+
+| service.network-policy-pod-selector
+| []map[string]string
+| Pod label selectors used as allowed NetworkPolicy ingress sources. When namespace selectors are also provided, selectors at the same index are combined.
+
 |===
 
 NOTE: the variable names are "snake case" if you're using in `kamel` CLI, for example `trait.myParam` has to be translated as `-t trait.my-param`
