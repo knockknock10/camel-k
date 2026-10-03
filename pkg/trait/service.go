@@ -203,6 +203,7 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 		APIVersion: networkingv1.SchemeGroupVersion.String(),
 	}
 	return policy, nil
+}
 
 func (t *serviceTrait) getServiceFor(itName, itNamespace string) *corev1.Service {
 	labels := map[string]string{
