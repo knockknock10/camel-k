@@ -19,6 +19,7 @@ package trait
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"strconv"
 	"strings"
@@ -176,7 +177,7 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 	}
 
 	return &networkingv1.NetworkPolicy{
-		TypeMeta: {
+		Kind:
 			Kind:       "NetworkPolicy",
 			APIVersion: networkingv1.SchemeGroupVersion.String(),
 		},
