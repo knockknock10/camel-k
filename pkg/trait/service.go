@@ -141,13 +141,17 @@ func (t *serviceTrait) Apply(e *Environment) error {
 		}
 		svc.Spec.Type = serviceType
 	}
-	e.Resources.Add(svc)
-
+	var networkPolicy *networkingv1.NetworkPolicy
 	if ptr.Deref(t.NetworkPolicyEnabled, false) {
-		networkPolicy, err := t.getNetworkPolicyFor(e.Integration.Name, e.Integration.Namespace)
+		var err error
+		networkPolicy, err = t.getNetworkPolicyFor(e.Integration.Name, e.Integration.Namespace)
 		if err != nil {
 			return err
 		}
+	}
+
+	e.Resources.Add(svc)
+	if networkPolicy != nil {
 		e.Resources.Add(networkPolicy)
 	}
 
