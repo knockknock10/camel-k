@@ -65,7 +65,7 @@ func TestServiceNetworkPolicy(t *testing.T) {
 		g.Eventually(NetworkPolicyByName(t, ctx, ns, name), TestTimeoutShort).ShouldNot(BeNil())
 
 		allowedPod := networkPolicyClientPod(name+"-allowed", ns, name, "allowed")
-		deniedPod := NetworkPolicyClientPod(name+"-denied", ns, name, "denied")
+		deniedPod := networkPolicyClientPod(name+"-denied", ns, name, "denied")
 		_, err = TestClient(t).CoreV1().Pods(ns).Create(ctx, allowedPod, metav1.CreateOptions{})
 		g.Expect(err).ToNot(HaveOccurred())
 		_, err = TestClient(t).CoreV1().Pods(ns).Create(ctx, deniedPod, metav1.CreateOptions{})
