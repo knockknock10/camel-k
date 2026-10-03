@@ -18,7 +18,7 @@ limitations under the License.
 package trait
 
 import (
-	"fmt"
+	"errors"
 	"maps"
 	"strconv"
 	"strings"
@@ -160,7 +160,7 @@ func (t *serviceTrait) Apply(e *Environment) error {
 
 func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*networkingv1.NetworkPolicy, error) {
 	if len(t.NetworkPolicyNamespaceSelector) == 0 && len(t.NetworkPolicyPodSelector) == 0 {
-		return nil, fmt.Errorf("network policy is enabled but no namespace or pod selector is configured")
+		return nil, errors.New("network policy is enabled but no namespace or pod selector is configured")
 	}
 
 	from := networkingv1.NetworkPolicyPeer{}
@@ -176,7 +176,7 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 	}
 
 	return &networkingv1.NetworkPolicy{
-		TypeMeta: metav1.TypeMeta{
+		TypeMeta: {
 			Kind:       "NetworkPolicy",
 			APIVersion: networkingv1.SchemeGroupVersion.String(),
 		},
