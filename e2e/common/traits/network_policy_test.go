@@ -64,7 +64,7 @@ func TestServiceNetworkPolicy(t *testing.T) {
 			Should(Equal(corev1.ConditionTrue))
 		g.Eventually(NetworkPolicyByName(t, ctx, ns, name), TestTimeoutShort).ShouldNot(BeNil())
 
-		allowedPod := NetworkPolicyClientPod(name+"-allowed", ns, name, "allowed")
+		allowedPod := networkPolicyClientPod(name+"-allowed", ns, name, "allowed")
 		deniedPod := NetworkPolicyClientPod(name+"-denied", ns, name, "denied")
 		_, err = TestClient(t).CoreV1().Pods(ns).Create(ctx, allowedPod, metav1.CreateOptions{})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -86,7 +86,7 @@ func TestServiceNetworkPolicy(t *testing.T) {
 	})
 }
 
-func NetworkPolicyClientPod(name, namespace, serviceName, app string) *corev1.Pod {
+func networkPolicyClientPod(name, namespace, serviceName, app string) *corev1.Pod {
 	return &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Pod",
@@ -134,11 +134,11 @@ func PodPhase(t *testing.T, ctx context.Context, namespace, name string) func() 
 }
 
 func NetworkPolicyByName(t *testing.T, ctx context.Context, namespace, name string) func() *networkingv1.NetworkPolicy {
-	return func() *corev1.NetworkPolicy {
+	return func() *networkingv1.NetworkPolicy {
 		policy := &networkingv1.NetworkPolicy{}
 		err := TestClient(t).Get(ctx, ctrl.ObjectKey{Name: name, Namespace: namespace}, policy)
 		if err != nil {
-			if !errors.Is(err, k8serrors.IsNotFound) {
+			if !k8serrors.IsNotFound(err) {
 				t.Logf("failed to read NetworkPolicy %s/%s: %v", namespace, name, err)
 			}
 			return nil
