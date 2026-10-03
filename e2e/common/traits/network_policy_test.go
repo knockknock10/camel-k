@@ -22,13 +22,13 @@ package common
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
@@ -133,9 +133,9 @@ func PodPhase(t *testing.T, ctx context.Context, namespace, name string) func() 
 	}
 }
 
-func NetworkPolicyByName(t *testing.T, ctx context.Context, namespace, name string) func() *corev1.NetworkPolicy {
+func NetworkPolicyByName(t *testing.T, ctx context.Context, namespace, name string) func() *networkingv1.NetworkPolicy {
 	return func() *corev1.NetworkPolicy {
-		policy := &corev1.NetworkPolicy{}
+		policy := &networkingv1.NetworkPolicy{}
 		err := TestClient(t).Get(ctx, ctrl.ObjectKey{Name: name, Namespace: namespace}, policy)
 		if err != nil {
 			if !errors.Is(err, k8serrors.IsNotFound) {
