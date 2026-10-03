@@ -24,6 +24,8 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
@@ -141,7 +143,60 @@ func (t *serviceTrait) Apply(e *Environment) error {
 	}
 	e.Resources.Add(svc)
 
+	if ptr.Deref(t.NetworkPolicyEnabled, false) {
+		networkPolicy, err := t.getNetworkPolicyFor(e.Integration.Name, e.Integration.Namespace)
+		if err != nil {
+			return err
+		}
+		e.Resources.Add(networkPolicy)
+	}
+
 	return nil
+}
+
+func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*networkingv1.NetworkPolicy, error) {
+	if len(t.NetworkPolicyNamespaceSelector) == 0 && len(t.NetworkPolicyPodSelector) == 0 {
+		return nil, fmt.Errorf("network policy is enabled but no namespace or pod selector is configured")
+	}
+
+	from := networkingv1.NetworkPolicyPeer{}
+	if len(t.NetworkPolicyNamespaceSelector) > 0 {
+		from.NamespaceSelector = &metav1.LabelSelector{
+			MatchLabels: maps.Clone(t.NetworkPolicyNamespaceSelector),
+		}
+	}
+	if len(t.NetworkPolicyPodSelector) > 0 {
+		from.PodSelector = &metav1.LabelSelector{
+			MatchLabels: maps.Clone(t.NetworkPolicyPodSelector),
+		}
+	}
+
+	return &networkingv1.NetworkPolicy{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "NetworkPolicy",
+			APIVersion: networkingv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      itName,
+			Namespace: itNamespace,
+			Labels: map[string]string{
+				v1.IntegrationLabel: itName,
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					v1.IntegrationLabel: itName,
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{From: []networkingv1.NetworkPolicyPeer{from}},
+			},
+		},
+	}, nil
 }
 
 func (t *serviceTrait) getServiceFor(itName, itNamespace string) *corev1.Service {
