@@ -57,7 +57,7 @@ jobs:
           check-latest: true
 
       - name: Set up Kubectl
-        uses: azure/setup-kubectl@829323503dbe3d00ca8346e5391ca0b07a9ab0d
+        uses: azure/setup-kubectl@3e0aec4d80787158d308d7b364cb1b702e7feb7f
 
       - name: Start Minikube with Calico
         uses: medyagh/setup-minikube@v0.0.21
