@@ -177,7 +177,7 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 	}
 
 	return &networkingv1.NetworkPolicy{
-		TypeMeta: metav1.TypeMeta{
+		metav1.TypeMeta{
 			Kind:       "NetworkPolicy",
 			APIVersion: networkingv1.SchemeGroupVersion.String(),
 		},
