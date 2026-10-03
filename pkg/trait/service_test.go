@@ -874,6 +874,7 @@ func TestServiceNetworkPolicyRequiresSelector(t *testing.T) {
 	err := trait.Apply(&environment)
 	require.Error(t, err)
 	assert.Equal(t, "network policy is enabled but no namespace or pod selector is configured", err.Error())
+	assert.Nil(t, environment.Resources.GetServiceForIntegration(environment.Integration))
 }
 
 func findNetworkPolicy(resources *kubernetes.Collection) *networkingv1.NetworkPolicy {
