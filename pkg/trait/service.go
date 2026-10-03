@@ -177,13 +177,13 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 	}
 
 	policy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      itName,
-			Namespace: itNamespace,
-			Labels: map[string]string{
-				v1.IntegrationLabel: itName,
-			},
+		Name:      itName,
+		Namespace: itNamespace,
+		Labels: map[string]string{
+			v1.IntegrationLabel: itName,
 		},
+		Kind:       "NetworkPolicy",
+		APIVersion: networkingv1.SchemeGroupVersion.String(),
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{
 				MatchLabels: map[string]string{
@@ -198,10 +198,7 @@ func (t *serviceTrait) getNetworkPolicyFor(itName, itNamespace string) (*network
 			},
 		},
 	}
-	policy.TypeMeta = metav1.TypeMeta{
-		Kind:       "NetworkPolicy",
-		APIVersion: networkingv1.SchemeGroupVersion.String(),
-	}
+
 	return policy, nil
 }
 
