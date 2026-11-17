@@ -35,9 +35,8 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
-	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	servingv1 "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/trait"
 	"github.com/apache/camel-k/v2/pkg/util"
@@ -47,12 +46,14 @@ import (
 )
 
 // NewMonitorAction is an action used to monitor manager Integrations.
-func NewMonitorAction() Action {
-	return &monitorAction{}
+func NewMonitorAction(camelMonitorAvailable bool) Action {
+	return &monitorAction{camelMonitorAvailable: camelMonitorAvailable}
 }
 
 type monitorAction struct {
 	baseAction
+
+	camelMonitorAvailable bool
 }
 
 func (action *monitorAction) Name() string {
@@ -139,6 +140,12 @@ func (action *monitorAction) Handle(ctx context.Context, integration *v1.Integra
 		return integration, err
 	}
 	action.checkTraitAnnotationsDeprecatedNotice(integration)
+
+	if action.camelMonitorAvailable {
+		if err := addCamelMonitorCondition(ctx, action.client, integration); err != nil {
+			return integration, err
+		}
+	}
 
 	return action.monitorPods(ctx, environment, integration)
 }
@@ -302,8 +309,8 @@ func isIntegrationKitResetRequired(integration *v1.Integration, kit *v1.Integrat
 		return true
 	}
 
-	if v1.GetIntegrationProfileAnnotation(integration) != "" &&
-		v1.GetIntegrationProfileAnnotation(integration) != v1.GetIntegrationProfileAnnotation(kit) {
+	if kubernetes.GetIntegrationProfileResource(integration) != "" &&
+		kubernetes.GetIntegrationProfileResource(integration) != kubernetes.GetIntegrationProfileResource(kit) {
 		// Integration profile for the integration has changed. Reset integration kit
 		// so new profile can be applied
 		return true
@@ -497,7 +504,7 @@ func arePodsFailingStatuses(integration *v1.Integration, pendingPods []corev1.Po
 // probeReadiness calls the readiness probes of the non-ready Pods directly to retrieve insights from the Camel runtime.
 // The func return the number of readyPods, the success of the probe and any error may have happened during its execution.
 //
-//nolint:staticcheck
+//nolint:gocognit,staticcheck
 func (action *monitorAction) probeReadiness(ctx context.Context, environment *trait.Environment, integration *v1.Integration, pods []corev1.Pod) (int32, bool, error) {
 	// as a default we assume the Integration is Ready
 	readyCondition := v1.IntegrationCondition{

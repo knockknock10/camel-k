@@ -28,7 +28,7 @@ VERSION ?= 2.12.0-SNAPSHOT
 LAST_RELEASED_IMAGE_NAME := camel-k-operator
 LAST_RELEASED_VERSION ?= 2.11.0
 DEFAULT_RUNTIME_PROVIDER := plain-quarkus
-DEFAULT_RUNTIME_VERSION := 3.39.1
+DEFAULT_RUNTIME_VERSION := 3.40.1
 # The last camel-k-runtime catalog
 # we keep using it until we support the CamelCatalog CR
 CK_RUNTIME_CATALOG_VERSION := 3.15.3
@@ -46,7 +46,7 @@ LINTER ?= $(LOCALBIN)/golangci-lint
 DEADCODE ?= $(LOCALBIN)/deadcode
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck
 GOIMPORT ?= $(LOCALBIN)/goimports
-LINTER_VERSION ?= v2.13.2
+LINTER_VERSION ?= v2.14.0
 GOVULNCHECK_VERSION ?= v1.8.0
 GOIMPORTS_VERSION ?= v0.50.0
 GOTESTFMT_VERSION ?= v2.5.0
@@ -61,7 +61,7 @@ BASE_IMAGE_NAME := eclipse-temurin
 BASE_IMAGE_VERSION := 17-jdk
 OFFICIAL_IMAGE_VERSION := 17-jdk
 BASE_IMAGE_SHA_VERSION := 17-jdk
-BASE_IMAGE_SHA := sha256:5d6042fb8cdc14d614e4e421f52e3211fc5aeadddce44cbf9de8ed37c791f824
+BASE_IMAGE_SHA := sha256:fbe9d94debbe24e529acfe235b98f065edea050a2dc00129b7d86261ce3248c8
 BASE_IMAGE := $(BASE_IMAGE_NAME):$(BASE_IMAGE_VERSION)$(if $(filter $(BASE_IMAGE_VERSION),$(BASE_IMAGE_SHA_VERSION)),@$(BASE_IMAGE_SHA),)
 LOCAL_REPOSITORY := /etc/maven/m2
 OPENSHIFT_REGISTRY := image-registry.openshift-image-registry.svc:5000
@@ -163,7 +163,7 @@ endef
 export LICENSE_HEADER
 default: build
 
-update-docs: build-resources
+update-docs:
 	./script/update_docs.sh
 
 bump-replace:
@@ -242,7 +242,7 @@ codegen-tools-install:
 	go install k8s.io/code-generator/cmd/informer-gen@$(CODEGEN_VERSION)
 	go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-build: codegen build-resources test build-kamel build-compile-integration-tests
+build: codegen test build-kamel build-compile-integration-tests
 
 build-platform: build build-kamel-platform
 
@@ -278,6 +278,14 @@ test-common: gotestfmt-install
 	exit $${FAILED}
 
 #
+# NetworkPolicy test that requires a Calico-backed Minikube cluster
+#
+test-network-policy: gotestfmt-install
+	FAILED=0; \
+	go test -p $(TEST_COMMON_PARALLEL_COUNT) -timeout 20m -v ./e2e/networkpolicy/... --parallel 1 -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	if ((FAILED)); then exit 1; fi
+
+#
 # Smoke tests are a subset of common tests used to quickly verify the operator
 #
 test-smoke: gotestfmt-install
@@ -298,13 +306,20 @@ test-advanced: gotestfmt-install
 	exit $${FAILED}
 
 #
-# Installation and upgrade procedure test using
+# Installation procedure test using
 #
 test-install: gotestfmt-install
 	FAILED=0; \
-	go test -timeout 20m -v ./e2e/install/kustomize -tags=integration $(GOTESTFMT) || ((FAILED++)); \
-	go test -timeout 20m -v ./e2e/install/helm -tags=integration $(GOTESTFMT) || ((FAILED++)); \
-	go test -timeout 60m -v ./e2e/install/upgrade -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	go test -timeout 15m -v ./e2e/install/kustomize -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	go test -timeout 15m -v ./e2e/install/helm -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	exit $${FAILED}
+
+#
+# Upgrade procedure test using
+#
+test-upgrade: gotestfmt-install
+	FAILED=0; \
+	go test -timeout 15m -v ./e2e/upgrade -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
@@ -324,11 +339,36 @@ test-knative: gotestfmt-install
 	exit $${FAILED}
 
 #
+# CamelMonitor discovery tests require Camel Monitor and Camel K operators.
+#
+.PHONY: test-camel-monitor
+test-camel-monitor: gotestfmt-install
+	set -o pipefail; FAILED=0; \
+	go test -timeout 20m -v ./e2e/camelmonitor -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	exit $${FAILED}
+
+#
 # Kafka tests that require the presence of Strimzi operator configuration
 #
 test-kafka: gotestfmt-install
 	FAILED=0; \
 	go test -timeout 20m -v ./e2e/kafka -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	exit $${FAILED}
+
+#
+# KEDA tests for automatic scaler discovery and autoscaling
+#
+test-keda: gotestfmt-install
+	FAILED=0; \
+	go test -timeout 30m -v ./e2e/keda -tags=integration $(GOTESTFMT) || ((FAILED++)); \
+	exit $${FAILED}
+
+#
+# ArkMQ tests that require the presence of ArkMQ operator configuration
+#
+test-arkmq: gotestfmt-install
+	FAILED=0; \
+	go test -timeout 20m -v ./e2e/arkmq -tags=integration $(GOTESTFMT) || ((FAILED++)); \
 	exit $${FAILED}
 
 #
@@ -369,9 +409,6 @@ ifneq ($(shell uname -s 2>/dev/null || echo Unknown),Linux)
 	# Symbolic link to a local CLI
 	ln -sf build/_output/bin/kamel-$(IMAGE_ARCH) ./kamel
 endif
-
-build-resources:
-	./script/get_catalog.sh $(CK_RUNTIME_CATALOG_VERSION)
 
 build-compile-integration-tests:
 ifndef NOTEST
@@ -512,13 +549,13 @@ images-push-staging-all:
 	done
 
 images-push:
-	docker push $(IMAGE_PUSH)
-	docker manifest create $(IMAGE_PUSH) $(IMAGE_PUSH)
 	for i in $(ARCH_VERSIONS); do \
-		docker push $(IMAGE_PUSH)-$$i ; \
-		docker manifest create $(IMAGE_PUSH) -a $(IMAGE_PUSH)-$$i; \
+		docker push $(IMAGE_PUSH)-$$i; \
 	done
-	docker manifest push $(IMAGE_PUSH) --purge
+	docker buildx imagetools create \
+		$(foreach i,$(ARCH_VERSIONS),--platform linux/$(i)) \
+		--tag $(IMAGE_PUSH) \
+		$(foreach i,$(ARCH_VERSIONS),$(IMAGE_PUSH)-$(i))
 
 images-tag-staging-all:
 	docker tag $(CUSTOM_IMAGE):$(CUSTOM_VERSION) $(STAGING_IMAGE):$(CUSTOM_VERSION)
@@ -536,15 +573,14 @@ images-push-staging:
 	docker tag $(CUSTOM_IMAGE):$(CUSTOM_VERSION)-amd64 $(STAGING_IMAGE):$(CUSTOM_VERSION)-amd64
 	docker tag $(CUSTOM_IMAGE):$(CUSTOM_VERSION)-amd64 $(STAGING_IMAGE):$(CUSTOM_VERSION)
 	docker push $(STAGING_IMAGE):$(CUSTOM_VERSION)-amd64
-	docker push $(STAGING_IMAGE):$(CUSTOM_VERSION)
 	@if docker inspect $(CUSTOM_IMAGE):$(CUSTOM_VERSION)-arm64 &> /dev/null; then \
 		echo "Image $(CUSTOM_IMAGE):$(CUSTOM_VERSION)-arm64 exists, building the multiarch manifest"; \
 		docker tag $(CUSTOM_IMAGE):$(CUSTOM_VERSION)-arm64 $(STAGING_IMAGE):$(CUSTOM_VERSION)-arm64; \
 		docker push $(STAGING_IMAGE):$(CUSTOM_VERSION)-arm64; \
-		docker manifest create $(STAGING_IMAGE):$(CUSTOM_VERSION) --amend $(STAGING_IMAGE):$(CUSTOM_VERSION)-amd64 --amend $(STAGING_IMAGE):$(CUSTOM_VERSION)-arm64; \
-		docker manifest push --purge $(STAGING_IMAGE):$(CUSTOM_VERSION); \
+		docker buildx imagetools create --platform linux/amd64 --platform linux/arm64 --tag $(STAGING_IMAGE):$(CUSTOM_VERSION) $(STAGING_IMAGE):$(CUSTOM_VERSION)-amd64 $(STAGING_IMAGE):$(CUSTOM_VERSION)-arm64; \
 	else \
 		echo "Image $(CUSTOM_IMAGE):$(CUSTOM_VERSION)-arm64 does not exist"; \
+		docker push $(STAGING_IMAGE):$(CUSTOM_VERSION); \
 	fi
 
 get-image:
@@ -576,13 +612,13 @@ cross-compile:
 	# be processed as a single argument by the cross compile script
 	./script/cross_compile.sh $(CUSTOM_VERSION) $(subst ","\",$(GOFLAGS))
 
-release-staging: clean codegen set-version check-licenses build-resources images-all images-tag-staging-all images-push-staging-all cross-compile release-helm bundle-push-staging git-tag sbomgen
+release-staging: clean codegen set-version check-licenses images-all images-tag-staging-all images-push-staging-all cross-compile release-helm bundle-push-staging git-tag sbomgen
 
 sbomgen:
 	cyclonedx-gomod mod -licenses -json -output sbom.json
 
 # Build images
-images-nightly: clean codegen set-version build-resources images-all
+images-nightly: clean codegen set-version images-all
 
 # Release artifacts
 release-nightly: cross-compile images-push-all
@@ -591,7 +627,7 @@ release-helm:
 	./script/set_version.sh ${VERSION}
 	./script/release_helm.sh ${VERSION}
 
-.PHONY: do-build build build-kamel build-kamel-platform build-resources dep codegen images images-push image-build test check clean release cross-compile package-examples set-version git-tag check-licenses build-resources release-helm release-staging release-nightly get-staging-repo get-version
+.PHONY: do-build build build-kamel build-kamel-platform dep codegen images images-push image-build test check clean release cross-compile package-examples set-version git-tag check-licenses release-helm release-staging release-nightly get-staging-repo get-version
 .PHONY: kubectl kustomize operator-sdk opm
 
 kubectl:
@@ -765,7 +801,7 @@ goimport:
 #####
 
 KUSTOMIZE_DIR = "install/overlays/all-namespaces"
-DEFAULT_NS = "camel-k"
+DEFAULT_NS = "camel"
 
 .PHONY: install install-k8s-global install-k8s-ns install-openshift-global install-openshift-ns
 
@@ -809,7 +845,7 @@ endif
 	cd $(KUST_TMP)/install/overlays/platform && kustomize edit set namespace $(NAMESPACE)
 	kubectl apply -k $(KUST_TMP)/$(KUSTOMIZE_DIR) --server-side --force-conflicts
 
-install-k8s-global: DEFAULT_NS="camel-k"
+install-k8s-global: DEFAULT_NS="camel"
 install-k8s-global: KUSTOMIZE_DIR="install/overlays/all-namespaces"
 install-k8s-global: clone-kustomize-dir set-operator-id set-operator-env install-operator
 

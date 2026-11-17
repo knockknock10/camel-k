@@ -34,6 +34,7 @@ import (
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/util"
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
+	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 
 	"fmt"
 )
@@ -45,6 +46,8 @@ const (
 
 // ComputeForIntegration a digest of the fields that are relevant for the deployment
 // Produces a digest that can be used as docker image tag.
+//
+//nolint:cyclop,gocognit,gocyclo
 func ComputeForIntegration(integration *v1.Integration, configmapVersions []string, secretVersions []string) (string, error) {
 	hash := sha256.New()
 	// Integration version is relevant
@@ -58,7 +61,7 @@ func ComputeForIntegration(integration *v1.Integration, configmapVersions []stri
 	}
 
 	// Integration profile is relevant
-	if _, err := hash.Write([]byte(v1.GetIntegrationProfileAnnotation(integration))); err != nil {
+	if _, err := hash.Write([]byte(kubernetes.GetIntegrationProfileResource(integration))); err != nil {
 		return "", err
 	}
 
@@ -111,6 +114,10 @@ func ComputeForIntegration(integration *v1.Integration, configmapVersions []stri
 	// Git spec
 	if integration.Spec.Git != nil {
 		gitSpec := integration.Spec.Git.URL + "/" + integration.Spec.Git.Secret
+		// appended only when set, in order to keep the digest of the Integrations that do not configure it
+		if integration.Spec.Git.Username != "" {
+			gitSpec = gitSpec + "/username:" + integration.Spec.Git.Username
+		}
 		switch {
 		case integration.Spec.Git.Tag != "":
 			gitSpec = gitSpec + "/" + integration.Spec.Git.Tag

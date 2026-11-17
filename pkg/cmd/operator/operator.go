@@ -52,10 +52,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
-
 	"github.com/apache/camel-k/v2/pkg/apis"
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
+	servingv1 "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	"github.com/apache/camel-k/v2/pkg/client"
 	"github.com/apache/camel-k/v2/pkg/controller"
 	"github.com/apache/camel-k/v2/pkg/install"
@@ -141,11 +140,10 @@ func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID
 
 	cfg, err := config.GetConfig()
 	exitOnError(err, "cannot get client config")
-	// Increase maximum burst that is used by client-side throttling,
-	// to prevent the requests made to apply the bundled Kamelets
-	// from being throttled.
-	cfg.QPS = 20
-	cfg.Burst = 200
+	// Increase maximum burst and QPS used by client-side throttling,
+	// to prevent API requests from being throttled during startup or high reconciliation loads.
+	cfg.QPS = platform.GetClientQPS()
+	cfg.Burst = platform.GetClientBurst()
 	bootstrapClient, err := client.NewClientWithConfig(false, cfg)
 	exitOnError(err, "cannot initialize client")
 

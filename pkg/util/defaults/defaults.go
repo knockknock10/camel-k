@@ -29,13 +29,13 @@ const (
 	DefaultRuntimeProvider = "plain-quarkus"
 
 	// DefaultRuntimeVersion --
-	DefaultRuntimeVersion = "3.39.1"
+	DefaultRuntimeVersion = "3.40.1"
 
 	// CamelKRuntimeCatalogVersion --
 	CamelKRuntimeCatalogVersion = "3.15.3"
 
 	// baseImage --
-	baseImage = "eclipse-temurin:17-jdk@sha256:5d6042fb8cdc14d614e4e421f52e3211fc5aeadddce44cbf9de8ed37c791f824"
+	baseImage = "eclipse-temurin:17-jdk@sha256:fbe9d94debbe24e529acfe235b98f065edea050a2dc00129b7d86261ce3248c8"
 
 	// LocalRepository --
 	LocalRepository = "/etc/maven/m2"

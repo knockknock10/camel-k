@@ -24,6 +24,7 @@ import (
 
 	camelv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/util/defaults"
+	"github.com/apache/camel-k/v2/pkg/util/kubernetes"
 	coordination "k8s.io/api/coordination/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -34,9 +35,18 @@ import (
 )
 
 const (
-	OperatorWatchNamespaceEnvVariable = "WATCH_NAMESPACE"
-	operatorNamespaceEnvVariable      = "NAMESPACE"
-	OperatorBuildStrategyEnvVar       = "BUILD_STRATEGY"
+	OperatorWatchNamespaceEnvVariable                = "WATCH_NAMESPACE"
+	operatorNamespaceEnvVariable                     = "NAMESPACE"
+	OperatorBuildStrategyEnvVar                      = "BUILD_STRATEGY"
+	OperatorIntegrationMaxConcurrentReconcilesEnvVar = "INTEGRATION_MAX_CONCURRENT_RECONCILES"
+	OperatorPipeMaxConcurrentReconcilesEnvVar        = "PIPE_MAX_CONCURRENT_RECONCILES"
+	OperatorClientQPSEnvVar                          = "CLIENT_QPS"
+	OperatorClientBurstEnvVar                        = "CLIENT_BURST"
+
+	defaultIntegrationMaxConcurrentReconciles = 1
+	defaultPipeMaxConcurrentReconciles        = 1
+	defaultClientQPS                          = float32(20)
+	defaultClientBurst                        = 200
 )
 
 const OperatorLockName = "camel-k-lock"
@@ -222,7 +232,7 @@ func (f FilteringFuncs[T]) Update(e event.TypedUpdateEvent[T]) bool {
 		// Always force reconciliation when the object becomes managed by the current operator
 		return true
 	}
-	if camelv1.GetIntegrationProfileAnnotation(e.ObjectOld) != camelv1.GetIntegrationProfileAnnotation(e.ObjectNew) {
+	if kubernetes.GetIntegrationProfileResource(e.ObjectOld) != kubernetes.GetIntegrationProfileResource(e.ObjectNew) {
 		// Always force reconciliation when the object gets attached to a new integration profile
 		return true
 	}
@@ -242,6 +252,26 @@ func (f FilteringFuncs[T]) Generic(e event.TypedGenericEvent[T]) bool {
 	}
 
 	return true
+}
+
+// GetIntegrationMaxConcurrentReconciles returns the configured max concurrent reconciles for the integration controller.
+func GetIntegrationMaxConcurrentReconciles() int {
+	return GetEnvOrDefaultAsInt(OperatorIntegrationMaxConcurrentReconcilesEnvVar, defaultIntegrationMaxConcurrentReconciles)
+}
+
+// GetPipeMaxConcurrentReconciles returns the configured max concurrent reconciles for the pipe controller.
+func GetPipeMaxConcurrentReconciles() int {
+	return GetEnvOrDefaultAsInt(OperatorPipeMaxConcurrentReconcilesEnvVar, defaultPipeMaxConcurrentReconciles)
+}
+
+// GetClientQPS returns the configured QPS for the operator client.
+func GetClientQPS() float32 {
+	return GetEnvOrDefaultAsFloat32(OperatorClientQPSEnvVar, defaultClientQPS)
+}
+
+// GetClientBurst returns the configured Burst for the operator client.
+func GetClientBurst() int {
+	return GetEnvOrDefaultAsInt(OperatorClientBurstEnvVar, defaultClientBurst)
 }
 
 var _ predicate.Predicate = FilteringFuncs[ctrl.Object]{}

@@ -65,6 +65,10 @@ spec:
       jsonPath: .status.replicas
       name: Replicas
       type: integer
+    - description: Whether an associated CamelMonitor resource is available
+      jsonPath: .status.conditions[?(@.type=="CamelMonitorAvailable")].status
+      name: Camel Monitor
+      type: string
     name: v1
     schema:
       openAPIV3Schema:
@@ -151,6 +155,11 @@ spec:
                     type: string
                   url:
                     description: the URL of the project
+                    type: string
+                  username:
+                    description: |-
+                      the username used to authenticate against the Git server, together with the token stored in `secret` (default `camel-k`).
+                      Some Git servers validate it, for example Bitbucket Cloud access tokens require `x-token-auth`.
                     type: string
                 type: object
               integrationKit:
@@ -8175,6 +8184,11 @@ spec:
                         description: the URL of the repository where the project is
                           stored.
                         type: string
+                      username:
+                        description: |-
+                          the username used to authenticate against the Git server, together with the token stored in `secret` (default `camel-k`).
+                          Some Git servers validate it, for example Bitbucket Cloud access tokens require `x-token-auth`.
+                        type: string
                     type: object
                   health:
                     description: The configuration of Health trait
@@ -9462,6 +9476,23 @@ spec:
                         additionalProperties:
                           type: string
                         description: The labels added to the Service object.
+                        type: object
+                      networkPolicyEnabled:
+                        description: |-
+                          Enables the NetworkPolicy managed by the Service trait. Defaults to false.
+                          When enabled, at least one of the namespace or pod selectors must be configured.
+                        type: boolean
+                      networkPolicyNamespaceSelector:
+                        additionalProperties:
+                          type: string
+                        description: Labels used to restrict the source namespaces
+                          allowed by the NetworkPolicy.
+                        type: object
+                      networkPolicyPodSelector:
+                        additionalProperties:
+                          type: string
+                        description: Labels used to restrict the source pods allowed
+                          by the NetworkPolicy.
                         type: object
                       nodePort:
                         description: |-
@@ -10587,6 +10618,11 @@ spec:
                         description: the URL of the repository where the project is
                           stored.
                         type: string
+                      username:
+                        description: |-
+                          the username used to authenticate against the Git server, together with the token stored in `secret` (default `camel-k`).
+                          Some Git servers validate it, for example Bitbucket Cloud access tokens require `x-token-auth`.
+                        type: string
                     type: object
                   health:
                     description: The configuration of Health trait
@@ -11874,6 +11910,23 @@ spec:
                         additionalProperties:
                           type: string
                         description: The labels added to the Service object.
+                        type: object
+                      networkPolicyEnabled:
+                        description: |-
+                          Enables the NetworkPolicy managed by the Service trait. Defaults to false.
+                          When enabled, at least one of the namespace or pod selectors must be configured.
+                        type: boolean
+                      networkPolicyNamespaceSelector:
+                        additionalProperties:
+                          type: string
+                        description: Labels used to restrict the source namespaces
+                          allowed by the NetworkPolicy.
+                        type: object
+                      networkPolicyPodSelector:
+                        additionalProperties:
+                          type: string
+                        description: Labels used to restrict the source pods allowed
+                          by the NetworkPolicy.
                         type: object
                       nodePort:
                         description: |-

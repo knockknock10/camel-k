@@ -58,7 +58,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  install-and-upgrade:
+  install:
     runs-on: ubuntu-latest
     steps:
 

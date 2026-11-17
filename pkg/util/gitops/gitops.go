@@ -477,6 +477,10 @@ patches:
 	return createOrAppendAll(destinationDir, dstPipe.Name, namespaceDest)
 }
 
+// DefaultGitUsername is the username callers can use to authenticate against the Git server when none is configured.
+// Most Git servers (ie, GitHub) accept any non empty value when authenticating with a token.
+const DefaultGitUsername = "camel-k"
+
 // GitToken read the first secret data provided by the Integration Git Secret.
 // Returns an empty string if the secret provided is empty.
 func GitToken(ctx context.Context, c client.Client, namespace, secret string) (string, error) {
@@ -496,9 +500,10 @@ func GitToken(ctx context.Context, c client.Client, namespace, secret string) (s
 	return "", nil
 }
 
-// CloneGitProject is in charge to clone the project from a given Git repo configuration.
+// CloneGitProject is in charge to clone the project from a given Git repo configuration,
+// authenticating with the given username and secretToken.
 // If no secretToken is provided, then, it is assumed the project is public.
-func CloneGitProject(gitConf v1.GitConfigSpec, dir, secretToken string) (*git.Repository, error) {
+func CloneGitProject(gitConf v1.GitConfigSpec, dir, username, secretToken string) (*git.Repository, error) {
 	depth := 1
 	if gitConf.Commit != "" {
 		// only the commit checkout requires full git project history
@@ -528,7 +533,7 @@ func CloneGitProject(gitConf v1.GitConfigSpec, dir, secretToken string) (*git.Re
 
 	if secretToken != "" {
 		gitCloneOptions.Auth = &http.BasicAuth{
-			Username: "camel-k", // yes, this can be anything except an empty string
+			Username: username,
 			Password: secretToken,
 		}
 	}

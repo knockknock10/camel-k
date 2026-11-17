@@ -36,11 +36,10 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
-	eventing "knative.dev/eventing/pkg/apis/eventing/v1"
-	serving "knative.dev/serving/pkg/apis/serving/v1"
-
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	traitv1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1/trait"
+	eventing "github.com/apache/camel-k/v2/pkg/apis/duck/knative/eventing/v1"
+	serving "github.com/apache/camel-k/v2/pkg/apis/duck/knative/serving/v1"
 	knativeapi "github.com/apache/camel-k/v2/pkg/internal/knative"
 	"github.com/apache/camel-k/v2/pkg/metadata"
 	"github.com/apache/camel-k/v2/pkg/util"
@@ -407,6 +406,7 @@ func (t *knativeTrait) isSinkBindingAllowed(e *Environment) bool {
 	return true
 }
 
+//nolint:gocognit
 func (t *knativeTrait) configureSinkBinding(e *Environment, env *knativeapi.CamelEnvironment) error {
 	if !ptr.Deref(t.SinkBinding, false) {
 		return nil

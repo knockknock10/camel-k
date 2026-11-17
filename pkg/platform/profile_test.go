@@ -23,13 +23,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/apache/camel-k/v2/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/v2/pkg/internal"
 )
 
-func TestFindIntegrationProfile(t *testing.T) {
+func TestFindOrApplyIntegrationProfile(t *testing.T) {
 	profile := v1.IntegrationProfile{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "custom",
@@ -41,6 +43,9 @@ func TestFindIntegrationProfile(t *testing.T) {
 	require.NoError(t, err)
 
 	integration := v1.Integration{
+		TypeMeta: metav1.TypeMeta{
+			Kind: v1.IntegrationKind,
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test",
 			Namespace: "ns",
@@ -56,4 +61,290 @@ func TestFindIntegrationProfile(t *testing.T) {
 	found, err := findIntegrationProfile(context.TODO(), c, &integration)
 	require.NoError(t, err)
 	assert.NotNil(t, found)
+
+	found, err = ApplyIntegrationProfile(context.TODO(), c, &integration)
+	require.NoError(t, err)
+	assert.NotNil(t, found)
+}
+
+func TestFindOrApplyIntegrationMissing(t *testing.T) {
+	profile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom",
+			Namespace: "ns",
+		},
+	}
+
+	c, err := internal.NewFakeClient(&profile)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		TypeMeta: metav1.TypeMeta{
+			Kind: v1.IntegrationKind,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				v1.IntegrationProfileAnnotation: "missing",
+			},
+		},
+		Status: v1.IntegrationStatus{
+			Phase: v1.IntegrationPhaseRunning,
+		},
+	}
+
+	found, err := findIntegrationProfile(context.TODO(), c, &integration)
+	require.Error(t, err)
+	assert.Nil(t, found)
+	assert.Contains(t, err.Error(), "\"missing\" not found")
+
+	found, err = ApplyIntegrationProfile(context.TODO(), c, &integration)
+	require.NoError(t, err)
+	assert.Nil(t, found)
+}
+
+func TestFindOrApplyIntegrationProfileError(t *testing.T) {
+	profile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom",
+			Namespace: "ns",
+		},
+	}
+
+	c, err := internal.NewFakeClient(&profile)
+	require.NoError(t, err)
+
+	integrationKit := v1.IntegrationKit{
+		TypeMeta: metav1.TypeMeta{
+			Kind: v1.IntegrationKitKind,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				v1.IntegrationProfileAnnotation: "custom",
+			},
+		},
+	}
+
+	_, err = findIntegrationProfile(context.TODO(), c, &integrationKit)
+	require.Error(t, err)
+	assert.Equal(t, "wrong format for IntegrationProfile, expected profile-namespace/profile-id", err.Error())
+
+	_, err = ApplyIntegrationProfile(context.TODO(), c, &integrationKit)
+	require.Error(t, err)
+	assert.Equal(t, "wrong format for IntegrationProfile, expected profile-namespace/profile-id", err.Error())
+}
+
+func TestFindIntegrationProfile_UserAnnotationTakesPrecedence(t *testing.T) {
+	userProfile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "user-profile",
+			Namespace: "ns",
+		},
+	}
+	nsProfile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ns-profile",
+			Namespace: "ns",
+		},
+	}
+	defaultProfile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default",
+			Namespace: "ns",
+		},
+	}
+	namespace := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns",
+			Annotations: map[string]string{
+				v1.IntegrationProfileAnnotation: "ns-profile",
+			},
+		},
+	}
+
+	c, err := internal.NewFakeClient(&userProfile, &nsProfile, &defaultProfile, &namespace)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				v1.IntegrationProfileAnnotation: "user-profile",
+			},
+		},
+	}
+
+	found, err := findIntegrationProfile(context.TODO(), c, &integration)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, "user-profile", found.Name)
+}
+
+func TestFindIntegrationProfile_NamespaceAnnotationTakesPrecedenceOverDefault(t *testing.T) {
+	nsProfile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ns-profile",
+			Namespace: "ns",
+		},
+	}
+	defaultProfile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default",
+			Namespace: "ns",
+		},
+	}
+	namespace := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns",
+			Annotations: map[string]string{
+				v1.IntegrationProfileAnnotation: "ns-profile",
+			},
+		},
+	}
+
+	c, err := internal.NewFakeClient(&nsProfile, &defaultProfile, &namespace)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+		},
+	}
+
+	found, err := findIntegrationProfile(context.TODO(), c, &integration)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, "ns-profile", found.Name)
+}
+
+func TestFindIntegrationProfile_DefaultProfileUsedWhenNoAnnotations(t *testing.T) {
+	defaultProfile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default",
+			Namespace: "ns",
+		},
+	}
+	namespace := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns",
+		},
+	}
+
+	c, err := internal.NewFakeClient(&defaultProfile, &namespace)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+		},
+	}
+
+	found, err := findIntegrationProfile(context.TODO(), c, &integration)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, "default", found.Name)
+}
+
+func TestFindIntegrationProfile_OperatorDefaultWhenNoProfile(t *testing.T) {
+	namespace := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns",
+		},
+	}
+
+	c, err := internal.NewFakeClient(&namespace)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+		},
+	}
+
+	found, err := findIntegrationProfile(context.TODO(), c, &integration)
+	require.NoError(t, err)
+	assert.Nil(t, found)
+}
+
+func TestFindIntegrationProfile_MissingUserAnnotatedProfileReturnsError(t *testing.T) {
+	namespace := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns",
+		},
+	}
+
+	c, err := internal.NewFakeClient(&namespace)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				v1.IntegrationProfileAnnotation: "missing-user-profile",
+			},
+		},
+	}
+
+	found, err := findIntegrationProfile(context.TODO(), c, &integration)
+	require.Error(t, err)
+	assert.True(t, k8serrors.IsNotFound(err))
+	assert.Nil(t, found)
+}
+
+func TestFindIntegrationProfile_MissingNamespaceAnnotatedProfileReturnsError(t *testing.T) {
+	namespace := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ns",
+			Annotations: map[string]string{
+				v1.IntegrationProfileAnnotation: "missing-ns-profile",
+			},
+		},
+	}
+
+	c, err := internal.NewFakeClient(&namespace)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+		},
+	}
+
+	found, err := findIntegrationProfile(context.TODO(), c, &integration)
+	require.Error(t, err)
+	assert.True(t, k8serrors.IsNotFound(err))
+	assert.Nil(t, found)
+}
+
+func TestApplyIntegrationProfile(t *testing.T) {
+	defaultProfile := v1.IntegrationProfile{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default",
+			Namespace: "ns",
+		},
+	}
+
+	c, err := internal.NewFakeClient(&defaultProfile)
+	require.NoError(t, err)
+
+	integration := v1.Integration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "ns",
+		},
+	}
+
+	found, err := ApplyIntegrationProfile(context.TODO(), c, &integration)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, "default", found.Name)
 }

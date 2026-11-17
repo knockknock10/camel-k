@@ -25,6 +25,14 @@ rules:
 - apiGroups:
   - camel.apache.org
   resources:
+  - camelmonitors
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - camel.apache.org
+  resources:
   - builds
   - camelcatalogs
   - integrationkits
@@ -146,13 +154,6 @@ rules:
   - watch
 # Required by mount trait
 - apiGroups:
-  - storage.k8s.io
-  resources:
-  - storageclasses
-  verbs:
-  - get
-  - list
-- apiGroups:
   - ""
   resources:
   - persistentvolumeclaims
@@ -182,6 +183,17 @@ rules:
   - get
   - list
   - patch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch
 # Required by gateway trait
 - apiGroups:
   - gateway.networking.k8s.io
