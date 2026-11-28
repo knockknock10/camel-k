@@ -3,13 +3,15 @@ title: Discovering connection configuration for KEDA scalers
 authors:
   - "@knockknock10"
 creation-date: 2026-10-25
-last-updated: 2026-11-08
+last-updated: 2026-11-28
 status: implementable
 see-also:
   - https://github.com/apache/camel-k/issues/6910
   - https://github.com/apache/camel-k/pull/6893
   - https://github.com/apache/camel-k/issues/6890
   - https://github.com/apache/camel-k/pull/6942
+  - https://github.com/apache/camel-k/pull/6917
+  - https://github.com/apache/camel-k/blob/main/proposals/v3-architecture.adoc
 replaces: []
 superseded-by: []
 ---
@@ -19,98 +21,134 @@ superseded-by: []
 
 == Summary
 
-KEDA automatic trigger discovery maps Integration endpoint information to scaler metadata. Some scalers also need connection information that is configured separately, for example through component properties or a named connection object. The current mapping path can use endpoint URI data and configured Integration/component properties, but separately declared connection configuration is not consistently available as structured information associated with the endpoint.
+KEDA automatic trigger discovery maps Integration endpoint information to scaler metadata. Some scalers also need connection information that is configured separately, for example through component properties or a named connection object. The mapping path can use endpoint URI data and configured Integration/component properties, but separately declared connection configuration is not consistently available as structured information associated with the endpoint.
 
-This proposal describes a generic design for discovering explicitly declared connection configuration and making the relevant information available to KEDA mapping. The design separates configuration extraction from scaler-specific metadata mapping. It does not require constructing runtime objects, starting a CamelContext, or connecting to external systems, and it does not prescribe details for a particular source format or scaler.
+This proposal describes a generic design for discovering explicitly declared connection configuration and making the relevant information available to KEDA mapping. It separates configuration extraction, reference association, and scaler-specific metadata mapping. It does not require constructing runtime objects, starting a CamelContext, or connecting to external systems.
+
+The design must also work across the planned Camel K v3 build boundary. Source inspection must not be tied to the KEDA trait running at deployment time or assume that the original DSL text will still be available after a Camel JBang-based build.
 
 == Problem statement
 
-A KEDA scaler needs enough information to query an external system and determine whether an Integration should scale. The endpoint URI often identifies the destination and contains some connection parameters, but connection details can also be held in configuration referenced by the endpoint or component.
+A KEDA scaler needs enough information to query an external system and determine when an Integration should scale. The endpoint URI often identifies the destination and contains some connection parameters, but connection details can also be held in a separately declared connection bean referenced by a component property.
 
-When those details are not available to automatic discovery, users must repeat them in KEDA configuration. Repeating the same values in different places can cause configuration drift and makes automatic discovery less useful. Camel K therefore needs a consistent way to expose relevant, statically declared connection configuration to the mapping process.
+For example, a component property can refer to a named bean using a direct reference such as `#rabbitConnectionFactory`. The bean declaration contains the statically configured host, port, and other connection properties. Automatic discovery needs to connect that reference to the corresponding declaration before a scaler mapper can use those values.
+
+When the information is not available to automatic discovery, users must repeat it in KEDA configuration. Repeating the same values in different places can cause configuration drift and makes automatic discovery less useful.
 
 == Existing behavior and gap
 
-The KEDA trait extracts endpoint information from Integration sources and passes it to the registered scaler mapper. The mapper interprets the endpoint information and produces a scaler type and its metadata. Configured Integration and component properties are also available to the mapping path.
+In the current v2 implementation, the KEDA trait's automatic discovery calls `metadata.ExtractAll` with the Integration's sources while the trait is being configured. The source inspectors extract endpoint URIs, and the scaler mapper receives the parsed endpoint information together with Integration/component properties.
 
-The gap is that connection configuration declared separately from an endpoint or component property is not represented as a generally available, structured relationship. A mapper cannot reliably use such configuration without either receiving that information from Camel K or attempting to reconstruct runtime behavior. The latter would make discovery dependent on application execution and runtime availability.
+The current source metadata model does not expose declared connection beans as structured metadata. Consequently, the mapping path cannot reliably associate a component property containing a bean reference with the bean's declared properties.
+
+The v3 architecture proposal changes the build lifecycle: a build Pod is expected to create the project through `camel export`, using Camel JBang. The design therefore cannot assume that source parsing will remain available inside the operator when the KEDA trait runs. This is an architectural boundary to resolve, not a reason to introduce runtime registry inspection.
 
 == Design goals and constraints
 
 The design should:
 
-* preserve the existing endpoint-based discovery behavior and compatibility with current scaler mappings;
-* make explicitly declared connection configuration available in a source-format-independent representation;
-* associate configuration with an endpoint only when that relationship can be determined unambiguously;
-* let each scaler mapper select only the configuration values relevant to its metadata;
-* retain existing explicit configuration and precedence behavior; and
-* keep discovery deterministic, safe, and independent of external system availability.
+* preserve existing endpoint-based discovery and current scaler behavior;
+* describe declared connection configuration in a normalized representation independent of a particular DSL;
+* associate a bean with a component only when an explicit reference identifies one declaration unambiguously;
+* pass only the associated configuration needed by the relevant scaler mapper;
+* keep extraction independent of KEDA scaler types;
+* remain usable when source inspection and deployment occur in different stages; and
+* preserve explicit user configuration and existing trigger precedence.
 
-The discovery process should describe configuration, not instantiate it. It must not execute user code, invoke factories, create live connection objects, start a CamelContext, or contact external systems. Dynamic or unavailable values must remain unresolved. Credentials and other sensitive values must not be copied into ordinary KEDA metadata or operator logs.
+The discovery process should describe configuration, not instantiate it. It must not execute user code, invoke factories, create live connection objects, start a CamelContext, contact external systems, or inspect the runtime registry. It should not attempt to reconstruct an unrestricted object-reference graph or infer a connection from a bean's type alone.
 
-The design does not require arbitrary source-code scanning or reconstruction of an unrestricted object-reference graph. When a declaration or relationship cannot be represented or resolved reliably, automatic discovery should leave that information unavailable and allow the user to configure it explicitly.
+When a declaration or reference cannot be represented or resolved reliably, automatic discovery should leave the connection information unavailable and allow the user to configure the scaler explicitly.
 
 == Proposed low-level design
 
 === Configuration extraction
 
-Camel K source inspection should expose connection declarations as structured metadata alongside the Integration information it already extracts. The representation should retain the information needed to identify a declaration and describe its explicitly configured properties, without creating the corresponding runtime object.
+The stage that has access to the Integration's declarative sources should extract connection declarations into structured metadata. The representation should retain the bean's identity, declared type, explicitly configured properties, and enough source/scope information to detect duplicate or ambiguous declarations.
 
-Parsing and source-specific details should remain within the relevant source inspectors. The KEDA trait and scaler mappings should consume the normalized representation rather than depend on a particular source syntax.
+The representation should be source-independent. Parsing details belong to the relevant source reader; consumers such as the KEDA trait should not need to understand YAML or XML syntax. The extracted data should describe what was declared, without building the bean or resolving values through the runtime registry.
 
-=== Association with endpoint configuration
+Only explicitly declared configuration is available to this process. It must not invoke factories, evaluate expressions, execute Java code, or resolve placeholders by contacting external systems.
 
-For each discovered endpoint, Camel K should use the Integration and component configuration already available to determine whether the endpoint refers to a declared connection configuration. The association should rely on explicit, structured references present in the inspected model.
+=== Association with component configuration
 
-An association should be used only when it identifies one unambiguous declaration. The design should not guess based solely on a matching type or name, infer usage from route implementation details, or follow arbitrary levels of indirection. Unresolved or ambiguous relationships remain unavailable to automatic discovery.
+For each discovered endpoint, the metadata association step should inspect the effective component configuration and identify direct bean references. For example, when the component property `camel.component.spring-rabbitmq.connection-factory` has the value `#rabbitConnectionFactory`, the reference identifies the bean declaration named `rabbitConnectionFactory`.
+
+The association should be accepted only when the reference is explicit and resolves to exactly one declaration in the applicable Integration configuration scope. The bean's declared type may be used to validate compatibility with the component property, but type matching alone must not select a bean.
+
+The design should not evaluate arbitrary bean expressions, follow factory methods, infer references from route implementation code, or guess between duplicate names. Missing, dynamic, unsupported, or ambiguous references remain unresolved. A component with no explicit bean reference continues to use its existing URI and Integration/component property mapping.
+
+The association must be retained per component configuration and endpoint. It must not attach every declared bean to every endpoint or mix connection properties from different beans.
 
 === Mapping input and metadata generation
 
-The mapping process should receive the endpoint information, the configured Integration/component properties, and any connection configuration that has been safely associated with that endpoint. The extraction layer should remain independent of KEDA scaler types.
+The mapping stage should receive:
 
-A scaler mapper remains responsible for selecting the properties it understands and translating them into the metadata required by its scaler. It should not receive or copy an entire connection configuration indiscriminately. Existing mappings that do not need connection configuration should continue to work without changes to their behavior.
+* the endpoint URI information already used by automatic discovery;
+* the effective Integration/component properties; and
+* the optional connection configuration associated through an explicit bean reference.
+
+A scaler mapper remains responsible for selecting the properties it understands and translating them into metadata for its KEDA scaler. The extraction and association layers must not contain scaler-specific property names or KEDA types.
+
+The mapper input should make the associated connection configuration optional so existing mappers continue to work without changes when no bean is referenced. The mapping layer must not copy an entire bean property map into a ScaledObject. It should project only the values required by that scaler.
+
+=== Build and deployment boundary
+
+The design must not require the KEDA trait to parse the original Integration source at deployment time.
+
+In v2, source metadata is currently extracted from `Integration.AllSources()` during trait configuration. In the proposed v3 architecture, project export/build is performed in a build Pod through Camel JBang. The availability and lifetime of the original source at the later deployment stage are not guaranteed by that architecture proposal.
+
+The recommended boundary is therefore a normalized, versioned source-metadata contract produced by whichever stage owns the declarative source. That contract should carry the connection declarations and their explicit component-property references together, so the association can be performed before the original source is discarded or transformed. The KEDA trait should consume the contract and remain independent of the source DSL and build tool.
+
+The exact transport for this metadata—whether it is retained with the Integration, attached to an IntegrationBuild result, or emitted as a build artifact—is an open v3 architecture decision. It should be agreed with the v3 build design before implementation is coupled to a particular storage location. If the build stage cannot provide this metadata, automatic bean-based scaler discovery must remain unavailable for that build path rather than falling back to runtime registry scanning.
+
+This boundary also allows the same metadata to be consumed by other deployment-time features without adding KEDA-specific behavior to the source parser.
 
 === Precedence and explicit configuration
 
-The existing endpoint URI mapping remains supported. When the same setting is available from more than one source, endpoint-specific configuration should not be silently replaced by a component-wide value. The mapping behavior should document and apply a stable precedence among endpoint information, Integration/component configuration, and associated connection configuration.
+Existing endpoint URI mapping remains supported. An endpoint-specific value must not be silently replaced by a value from a shared component configuration. When a component explicitly references a connection bean, the bean properties describe that configured connection; the mapper should use only the properties relevant to its scaler and document how they interact with any directly configured component properties.
 
-Existing explicit KEDA configuration must remain authoritative according to the current behavior: manually configured triggers should not be replaced by automatically discovered triggers of the same type, and `keda.autoMetadata` should continue to overlay mapper-generated metadata.
+Manually configured KEDA triggers must retain their current precedence: an automatically discovered trigger of a type already configured manually must not replace it. `keda.autoMetadata` must continue to overlay mapper-generated metadata as it does today.
 
-=== Unavailable and sensitive values
+The association logic must not change the behavior of existing mappers that do not consume bean configuration.
 
-Only values that are explicitly available in the inspected configuration and safe to expose should be considered for automatic metadata. Placeholders, environment-dependent values, external configuration, and secret-backed values must not be evaluated or copied into plain scaler metadata by this discovery process.
+=== Unavailable values and credential handling
 
-Authentication remains separate from ordinary scaler metadata. Sensitive values should continue to be supplied through the supported KEDA authentication and Secret mechanisms. If a required value is dynamic, sensitive, unsupported, or ambiguous, the mapper should leave it unavailable for the user to provide through explicit configuration.
+Extraction is descriptive. It should retain explicitly declared scalar values as they appear in the source, including credential fields, rather than trying to classify or resolve them during parsing. Placeholders, environment expressions, and secret references remain literal unresolved values; extraction must not fetch a Secret, read an environment variable, or expand a placeholder.
+
+This keeps source extraction separate from credential resolution. At the mapping stage, a scaler mapper must not place a plaintext password or other credential into ordinary ScaledObject metadata. Authentication should continue to use the KEDA authentication and Secret mechanisms supported by the relevant scaler. If a credential cannot be represented through those mechanisms, the mapper should leave it for explicit user configuration rather than expose it as ordinary metadata.
 
 === Camel Core boundary
 
-The design should use the structured configuration that Camel K can obtain from its Integration sources. If a reusable limitation remains across source types, the Camel community can assess whether a generic configuration-description contract would help. Such a contract should describe configuration without exposing live objects, executing application code, resolving secrets, or depending on KEDA-specific types.
+The first implementation boundary should be the source/build metadata contract used by Camel K and its build tooling. KEDA-specific interpretation belongs in Camel K scaler mappings, not Camel Core.
+
+A Camel Core or Camel JBang contribution should be considered only if the source/build stage needs a reusable, DSL-independent way to describe declared configuration and references for more than this Camel K use case. Any such contract should describe declared configuration without exposing live objects, executing application code, resolving secrets, or depending on KEDA-specific types.
 
 == Validation considerations
 
 The design should be validated with tests that cover:
 
 * endpoint-only configuration, ensuring existing mappings remain unchanged;
-* connection information supplied through Integration/component properties;
-* an explicitly associated connection declaration and the extraction of its configured properties;
-* multiple endpoints with different connection settings, ensuring each endpoint receives the correct information;
-* missing, ambiguous, dynamic, and unsupported configuration, ensuring discovery does not guess or fail by inventing values;
-* sensitive configuration, ensuring credentials are not exposed in scaler metadata or logs; and
-* precedence between endpoint values, discovered configuration, manually configured triggers, and `keda.autoMetadata`.
+* extraction and merging of declared bean metadata from supported declarative source forms;
+* a direct component-property reference such as `#rabbitConnectionFactory` resolving to the matching bean declaration;
+* multiple endpoints referencing different beans, ensuring connection properties are not mixed;
+* missing, duplicate, ambiguous, dynamic, and unsupported references, ensuring discovery does not guess;
+* preservation of unresolved placeholders without resolving them;
+* retention of declared scalar credential fields during extraction without copying plaintext credentials into ordinary scaler metadata;
+* precedence among endpoint configuration, the referenced connection bean, manually configured triggers, and `keda.autoMetadata`; and
+* serialization and consumption of the normalized metadata contract across the build/deployment boundary.
 
-Unit tests should cover extraction, association, and handling of unsupported or sensitive values independently of scaler-specific mapping tests. Mapping tests should verify the resulting scaler metadata and precedence. Integration tests can verify the generated KEDA resources without requiring a live external broker for every configuration-discovery case.
+Extraction, association, metadata handoff, and scaler mapping should be tested independently. A metadata extraction test alone does not prove that a component reference is associated correctly or that the scaler receives the associated properties. Integration tests can verify generated KEDA resources without requiring a live external broker for every configuration-discovery case.
 
 == Recommendation
 
-Use a normalized, source-independent representation for explicitly declared connection configuration. Keep extraction and association in Camel K's configuration inspection path, and keep the interpretation of those values in the relevant scaler mapper. Preserve endpoint-based discovery and explicit user configuration, and do not attempt runtime bean introspection or resolve dynamic and sensitive values as part of automatic discovery.
+Use an explicit, source-independent metadata contract to carry declared connection configuration and direct component-property references from the source/build stage to deployment-time consumers. Resolve only unambiguous direct bean references; keep the extraction stage descriptive and the scaler mapping stage responsible for projecting the values it understands. Do not instantiate beans or scan the runtime registry.
+
+Before implementing the KEDA integration, agree where this metadata is produced and how it crosses the Camel K v3 Camel JBang build boundary. Do not make the KEDA trait depend on parsing the original DSL at deployment time.
 
 == Implementation tracker
 
-This tracker records implementation activity related to this design. Each entry should include the date, a brief description of the work or review outcome, and its current status. The dates are progress records, not delivery targets.
-
-* **2026-11-07** — Implementation work is being tracked in [#6942](https://github.com/apache/camel-k/pull/6942), which explores extracting declared connection configuration into Integration source metadata. **Status:** pull request open.
-* **2026-11-08** — Maintainer feedback on [#6942](https://github.com/apache/camel-k/pull/6942) requested generic bean retrieval without scaler-specific mapping, additional source DSL coverage, and unit tests. The follow-up revision removes the scaler-specific code and adds bean metadata extraction for YAML, Camel XML, Spring XML, and Java `@BindToRegistry` declarations on classes, methods, and fields. It also adds tests for metadata merging, supported declaration forms, and sensitive-property filtering. Focused Go tests and `go vet` pass locally. **Status:** [#6942](https://github.com/apache/camel-k/pull/6942) is open and ready for review at commit `046d2663d86992548031679fd591a3ec368d33c8`; GitHub Actions workflows currently require action before they run.
+* **2026-11-28** — [#6917](https://github.com/apache/camel-k/pull/6917), which introduced this design, is merged. The source-extraction prototype is tracked separately in [#6942](https://github.com/apache/camel-k/pull/6942). Its current draft extracts named bean declarations and scalar properties from YAML, Camel XML, and Spring XML and merges the extracted records across sources. It does not yet associate a component property such as `connection-factory=#rabbitConnectionFactory` with a declaration or pass associated properties to a scaler mapper. On 2026-11-11, the maintainer asked to hold #6942 while evaluating its relationship with the v3 Camel JBang build proposal. The prototype is still a draft and its bean metadata changes are not present in `main`.
 
 == Expected outcome
 
-The result should be a clear boundary between configuration discovery and scaler-specific mapping. Camel K should make connection configuration available when it can be extracted and associated safely, while preserving existing behavior and leaving runtime-only, ambiguous, or sensitive information to explicit user configuration.
+The result should be a clear boundary between source/build metadata extraction, explicit connection-reference association, and scaler-specific mapping. Camel K should make connection configuration available when it can be extracted and associated unambiguously, while preserving existing behavior and leaving runtime-only, ambiguous, or unresolved information to explicit user configuration.
