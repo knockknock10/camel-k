@@ -3,7 +3,7 @@ title: Discovering connection configuration for KEDA scalers
 authors:
   - "@knockknock10"
 creation-date: 2026-10-25
-last-updated: 2026-11-08
+last-updated: 2026-11-28
 status: implementable
 see-also:
   - https://github.com/apache/camel-k/issues/6910
@@ -109,7 +109,7 @@ Use a normalized, source-independent representation for explicitly declared conn
 This tracker records implementation activity related to this design. Each entry should include the date, a brief description of the work or review outcome, and its current status. The dates are progress records, not delivery targets.
 
 * **2026-11-07** — Implementation work is being tracked in [#6942](https://github.com/apache/camel-k/pull/6942), which explores extracting declared connection configuration into Integration source metadata. **Status:** pull request open.
-* **2026-11-08** — Maintainer feedback on [#6942](https://github.com/apache/camel-k/pull/6942) requested generic bean retrieval without scaler-specific mapping, additional source DSL coverage, and unit tests. The follow-up revision removes the scaler-specific code and adds bean metadata extraction for YAML, Camel XML, Spring XML, and Java `@BindToRegistry` declarations on classes, methods, and fields. It also adds tests for metadata merging, supported declaration forms, and sensitive-property filtering. Focused Go tests and `go vet` pass locally. **Status:** [#6942](https://github.com/apache/camel-k/pull/6942) is open and ready for review at commit `046d2663d86992548031679fd591a3ec368d33c8`; GitHub Actions workflows currently require action before they run.
+* **2026-11-11** — Following review, [#6942](https://github.com/apache/camel-k/pull/6942) was narrowed to generic extraction of explicitly declared bean metadata; scaler-specific mapping and Java registry discovery were removed. The maintainer then placed the pull request on hold pending an assessment of how this work fits the Camel K v3 build flow, where Camel JBang may change the availability of source scanning. **Status (checked 2026-11-28):** [#6942](https://github.com/apache/camel-k/pull/6942) remains open as a draft with the `status/hold-on` label.
 
 == Expected outcome
 
